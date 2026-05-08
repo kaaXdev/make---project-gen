@@ -3,16 +3,16 @@
 ; Non-commercial use only
 
 #define MyAppName "make"
-#define MyAppVersion "1.1"
+#define MyAppVersion "1.2"
 #define MyAppPublisher "kaasoftware"
 #define MyAppURL "https://kaa.ct.ws"
-#define MyAppExeName "make.bat"
+#define MyAppExeName "make.exe"
 #expr EmitLanguagesSection
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{0BEFD484-4AE8-4619-99F6-D4C08D7A0D51}
+AppId={{0436F8CD-9EF2-475E-B66F-6AF26ACFBCC8}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -21,16 +21,16 @@ AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
-DefaultGroupName=make - gen
-AllowNoIcons=yes
+UninstallDisplayIcon={app}\{#MyAppExeName}
+DisableProgramGroupPage=yes
 LicenseFile=C:\Users\kaapc\Documents\make - project gen\install\mit.txt
+InfoBeforeFile=C:\Users\kaapc\Documents\make - project gen\install\credit.txt
 ; Remove the following line to run in administrative install mode (install for all users).
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-OutputDir=C:\Users\kaapc\Documents
-OutputBaseFilename=make-install
+OutputBaseFilename=make1.2-installer
 SolidCompression=yes
-WizardStyle=modern dark windows11
+WizardStyle=classic dark
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -41,11 +41,9 @@ Source: "C:\Users\kaapc\Documents\make - project gen\*"; DestDir: "{app}"; Flags
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: shellexec postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
