@@ -1,9 +1,10 @@
-﻿# =====================================================================
-#  MAKE MULTI CLI  🚀  v3.0
+# =====================================================================
+#  MAKE MULTI CLI  🚀  v3.1
 #  Epic project scaffolding tool for devs
 # =====================================================================
 
-$ROOT = Join-Path $PWD "projects"
+$ROOT        = Join-Path $PWD "projects"
+$HISTORY_LOG = Join-Path $PWD "make-history.log"
 
 # -------------------------
 # COLORS
@@ -55,6 +56,15 @@ function Ensure-Root {
 }
 
 # -------------------------
+# HISTORY LOGGING
+# -------------------------
+function Write-History($action, $detail = "") {
+    $ts   = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "[$ts]  $action  $detail".TrimEnd()
+    Add-Content -Path $HISTORY_LOG -Value $line
+}
+
+# -------------------------
 # GITIGNORE TEMPLATES
 # -------------------------
 function Get-GitIgnore($lang) {
@@ -84,7 +94,7 @@ function New-Template($lang, $name) {
     @"
 # $name
 
-> Created with **Make Multi CLI** v3.0 🚀
+> Created with **Make Multi CLI** v3.1 🚀
 
 ## Language
 ``$lang``
@@ -189,10 +199,13 @@ greet("$name");
 {
   "name": "$name",
   "lang": "$lang",
-  "created": "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+  "created": "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
+  "tags": [],
+  "note": ""
 }
 "@ | Set-Content "$target/meta.json"
 
+    Write-History "CREATED" "$lang/$name"
     Write-Success "Created $lang project: $name"
     Write-Color "     📁  $target" "DarkGray"
 }
@@ -210,21 +223,21 @@ function Clone-Project($src, $dst) {
 
     Copy-Item $srcPath $dstPath -Recurse
 
-    # Update meta.json
     $meta = Join-Path $dstPath "meta.json"
     if (Test-Path $meta) {
-        $data = Get-Content $meta | ConvertFrom-Json
-        $data.name = $dst
+        $data         = Get-Content $meta | ConvertFrom-Json
+        $data.name    = $dst
         $data.created = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
         $data | ConvertTo-Json | Set-Content $meta
     }
 
+    Write-History "CLONED" "$src → $dst"
     Write-Success "Cloned '$src' → '$dst'"
     Write-Color "     📁  $dstPath" "DarkGray"
 }
 
 # -------------------------
-# SEARCH
+# SEARCH  (name, lang, tags)
 # -------------------------
 function Search-Projects($keyword) {
     if (!$keyword) { Write-Error "Usage: search <keyword>"; return }
@@ -234,13 +247,15 @@ function Search-Projects($keyword) {
 
     foreach ($p in $projects) {
         $meta = Join-Path $p.FullName "meta.json"
-        $lang = "?"
+        $lang = "?"; $tags = @()
         if (Test-Path $meta) {
             $data = Get-Content $meta | ConvertFrom-Json
             $lang = $data.lang
+            if ($data.PSObject.Properties["tags"]) { $tags = @($data.tags) }
         }
-        if ($p.Name -like "*$keyword*" -or $lang -like "*$keyword*") {
-            $results += @{ name = $p.Name; lang = $lang }
+        $tagMatch = $tags | Where-Object { $_ -like "*$keyword*" }
+        if ($p.Name -like "*$keyword*" -or $lang -like "*$keyword*" -or $tagMatch) {
+            $results += @{ name = $p.Name; lang = $lang; tags = $tags }
         }
     }
 
@@ -256,7 +271,10 @@ function Search-Projects($keyword) {
         $icon  = Get-LangIcon $r.lang
         $color = Get-LangColor $r.lang
         Write-Host -NoNewline "     $icon  "
-        Write-Host $r.name -ForegroundColor $color
+        Write-Host -NoNewline $r.name -ForegroundColor $color
+        if ($r.tags.Count -gt 0) {
+            Write-Host "  $(($r.tags | ForEach-Object { "#$_" }) -join ' ')" -ForegroundColor DarkGray
+        } else { Write-Host "" }
     }
     Write-Host ""
 }
@@ -302,6 +320,7 @@ function Export-Project($name) {
     try {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         [System.IO.Compression.ZipFile]::CreateFromDirectory($target, $zipPath)
+        Write-History "EXPORTED" "$name → $zipPath"
         Write-Success "Exported '$name' → $zipPath"
     } catch {
         Write-Error "Export failed: $_"
@@ -320,6 +339,7 @@ function Delete-Project($name) {
     $confirm = Read-Host "  >"
     if ($confirm -eq "y" -or $confirm -eq "yes") {
         Remove-Item $target -Recurse -Force
+        Write-History "DELETED" "$name"
         Write-Success "Deleted project: $name"
     } else { Write-Info "Cancelled" }
 }
@@ -338,10 +358,11 @@ function Rename-Project($oldName, $newName) {
     Rename-Item $oldPath $newName
     $meta = Join-Path $newPath "meta.json"
     if (Test-Path $meta) {
-        $data = Get-Content $meta | ConvertFrom-Json
+        $data      = Get-Content $meta | ConvertFrom-Json
         $data.name = $newName
         $data | ConvertTo-Json | Set-Content $meta
     }
+    Write-History "RENAMED" "$oldName → $newName"
     Write-Success "Renamed '$oldName' → '$newName'"
 }
 
@@ -376,17 +397,19 @@ function List-Projects {
 
     foreach ($p in $projects) {
         $meta = Join-Path $p.FullName "meta.json"
-        $lang = "?"; $created = ""
+        $lang = "?"; $created = ""; $tags = @()
         if (Test-Path $meta) {
             $data    = Get-Content $meta | ConvertFrom-Json
             $lang    = $data.lang
             $created = $data.created
+            if ($data.PSObject.Properties["tags"]) { $tags = @($data.tags) }
         }
         $icon  = Get-LangIcon $lang
         $color = Get-LangColor $lang
         Write-Host -NoNewline "  $icon  "
         Write-Host -NoNewline $p.Name -ForegroundColor $color
-        Write-Host "   $lang  |  $created" -ForegroundColor DarkGray
+        $tagStr = if ($tags.Count -gt 0) { "  $(($tags | ForEach-Object { "#$_" }) -join ' ')" } else { "" }
+        Write-Host "   $lang  |  $created$tagStr" -ForegroundColor DarkGray
     }
     Write-Host ""
 }
@@ -414,9 +437,18 @@ function Info-Project($name) {
 
     $meta = Join-Path $target "meta.json"
     if (Test-Path $meta) {
-        $lang = (Get-Content $meta | ConvertFrom-Json).lang
+        $data = Get-Content $meta | ConvertFrom-Json
+        $lang = $data.lang
         Write-Host -NoNewline "  🔧  Language: "
         Write-Host $lang -ForegroundColor (Get-LangColor $lang)
+
+        if ($data.PSObject.Properties["tags"] -and @($data.tags).Count -gt 0) {
+            $tagStr = ($data.tags | ForEach-Object { "#$_" }) -join "  "
+            Write-Color "  🏷️   Tags:     $tagStr" "DarkCyan"
+        }
+        if ($data.PSObject.Properties["note"] -and $data.note) {
+            Write-Color "  📝  Note:     $($data.note)" "White"
+        }
     }
 
     Write-Host ""
@@ -492,6 +524,7 @@ function Init-Git($name) {
     git add . | Out-Null
     git commit -m "init: scaffold $name" | Out-Null
     Pop-Location
+    Write-History "GIT_INIT" "$name"
     Write-Success "Git repo initialized in '$name' with initial commit"
 }
 
@@ -530,20 +563,201 @@ function Install-Deps($name) {
     Pop-Location
 }
 
+# =====================================================================
+#  NOTES  —  lyhyt muistiinpano projektille
+# =====================================================================
+
+function Set-Note($name, $note) {
+    if (!$name) { Write-Error "Usage: notes <name> [teksti]"; return }
+    $meta = Join-Path $ROOT $name "meta.json"
+    if (!(Test-Path $meta)) { Write-Error "Project '$name' not found"; return }
+
+    $data = Get-Content $meta | ConvertFrom-Json
+
+    # Jos note-kenttää ei vielä ole, lisätään se
+    if (!$data.PSObject.Properties["note"]) {
+        $data | Add-Member -NotePropertyName "note" -NotePropertyValue ""
+    }
+
+    if (!$note) {
+        # Interaktiivinen syöttö
+        Write-Host ""
+        Write-Color "  📝  Note for '$name'" "Cyan"
+        if ($data.note) { Write-Color "  Current: $($data.note)" "DarkGray" }
+        Write-Color "  (Enter to keep current, '-' to clear)" "DarkGray"
+        Write-Host -NoNewline "  ❯ "
+        $note = Read-Host
+        if ($note -eq "") { Write-Info "Unchanged"; return }
+        if ($note -eq "-") { $note = "" }
+    }
+
+    $data.note = $note
+    $data | ConvertTo-Json | Set-Content $meta
+
+    if ($note) {
+        Write-History "NOTE" "$name  ← $note"
+        Write-Success "Note saved for '$name'"
+        Write-Color "     📝  $note" "DarkGray"
+    } else {
+        Write-History "NOTE_CLEARED" "$name"
+        Write-Success "Note cleared for '$name'"
+    }
+}
+
+# =====================================================================
+#  TAGS  —  lisää / poista / listaa tageja
+# =====================================================================
+
+function Set-Tag($name, $tag) {
+    if (!$name) { Write-Error "Usage: tag <name> <tag>   tai   tag <name> -<tag> (poista)"; return }
+    $meta = Join-Path $ROOT $name "meta.json"
+    if (!(Test-Path $meta)) { Write-Error "Project '$name' not found"; return }
+
+    $data = Get-Content $meta | ConvertFrom-Json
+
+    if (!$data.PSObject.Properties["tags"]) {
+        $data | Add-Member -NotePropertyName "tags" -NotePropertyValue @()
+    }
+
+    $tags = @($data.tags)
+
+    # Ei tagia annettu — näytä nykyiset
+    if (!$tag) {
+        Write-Host ""
+        Write-Color "  🏷️   Tags for '$name'" "Cyan"
+        if ($tags.Count -eq 0) { Write-Warn "  No tags yet." }
+        else { Write-Color "  $(($tags | ForEach-Object { "#$_" }) -join '  ')" "DarkCyan" }
+        Write-Host ""
+        return
+    }
+
+    # Poistaminen: -tagname
+    if ($tag.StartsWith("-")) {
+        $remove = $tag.Substring(1)
+        if ($tags -contains $remove) {
+            $tags   = @($tags | Where-Object { $_ -ne $remove })
+            $data.tags = $tags
+            $data | ConvertTo-Json | Set-Content $meta
+            Write-History "TAG_REMOVED" "$name  #$remove"
+            Write-Success "Removed tag '#$remove' from '$name'"
+        } else {
+            Write-Warn "Tag '#$remove' not found on '$name'"
+        }
+        return
+    }
+
+    # Lisääminen
+    $tag = $tag.TrimStart("#")
+    if ($tags -contains $tag) {
+        Write-Warn "Tag '#$tag' already set on '$name'"
+        return
+    }
+    $tags      = @($tags) + $tag
+    $data.tags = $tags
+    $data | ConvertTo-Json | Set-Content $meta
+    Write-History "TAG_ADDED" "$name  #$tag"
+    Write-Success "Added tag '#$tag' to '$name'"
+    Write-Color "     🏷️   $(($tags | ForEach-Object { "#$_" }) -join '  ')" "DarkCyan"
+}
+
+# =====================================================================
+#  HISTORY  —  operaatioloki
+# =====================================================================
+
+function Show-History($filter = "") {
+    if (!(Test-Path $HISTORY_LOG)) {
+        Write-Warn "No history yet."
+        return
+    }
+
+    $lines = Get-Content $HISTORY_LOG
+    if ($filter) { $lines = $lines | Where-Object { $_ -like "*$filter*" } }
+
+    if (!$lines -or $lines.Count -eq 0) {
+        Write-Warn "No history matching '$filter'"
+        return
+    }
+
+    # Viimeiset 30 rivi uusin ensin
+    $lines = @($lines)[-[math]::Min(30, $lines.Count)..-1] | Sort-Object -Descending
+
+    Write-Host ""
+    Write-Color "  📜  History$(if ($filter) { " — '$filter'" })" "Cyan"
+    Write-Color "  $('─' * 50)" "DarkGray"
+
+    foreach ($line in $lines) {
+        # Parsitaan formaatti: [yyyy-MM-dd HH:mm:ss]  ACTION  detail
+        if ($line -match '^\[(.+?)\]\s+(\w+)\s*(.*)$') {
+            $ts     = $matches[1]
+            $action = $matches[2]
+            $detail = $matches[3]
+
+            $color = switch ($action) {
+                "CREATED"      { "Green" }
+                "DELETED"      { "Red" }
+                "RENAMED"      { "Yellow" }
+                "CLONED"       { "Cyan" }
+                "EXPORTED"     { "DarkCyan" }
+                "GIT_INIT"     { "Blue" }
+                "TAG_ADDED"    { "Magenta" }
+                "TAG_REMOVED"  { "DarkMagenta" }
+                "NOTE"         { "White" }
+                "NOTE_CLEARED" { "DarkGray" }
+                default        { "White" }
+            }
+
+            $icon = switch ($action) {
+                "CREATED"      { "✅" }
+                "DELETED"      { "🗑 " }
+                "RENAMED"      { "✏ " }
+                "CLONED"       { "📋" }
+                "EXPORTED"     { "📤" }
+                "GIT_INIT"     { "🔧" }
+                "TAG_ADDED"    { "🏷 " }
+                "TAG_REMOVED"  { "🏷 " }
+                "NOTE"         { "📝" }
+                "NOTE_CLEARED" { "📝" }
+                default        { "  " }
+            }
+
+            Write-Host -NoNewline "  $icon  "
+            Write-Host -NoNewline "$ts  " -ForegroundColor DarkGray
+            Write-Host -NoNewline "$action" -ForegroundColor $color
+            if ($detail) { Write-Host "  $detail" -ForegroundColor DarkGray }
+            else         { Write-Host "" }
+        } else {
+            Write-Color "  $line" "DarkGray"
+        }
+    }
+    Write-Host ""
+    Write-Color "  📁  $HISTORY_LOG" "DarkGray"
+    Write-Host ""
+}
+
+function Clear-History {
+    if (!(Test-Path $HISTORY_LOG)) { Write-Warn "No history file found."; return }
+    Write-Warn "Clear entire history? (y/n)"
+    $confirm = Read-Host "  >"
+    if ($confirm -eq "y" -or $confirm -eq "yes") {
+        Remove-Item $HISTORY_LOG -Force
+        Write-Success "History cleared"
+    } else { Write-Info "Cancelled" }
+}
+
 # -------------------------
 # HELP
 # -------------------------
 function Help {
     Write-Host ""
     Write-Color "  ┌─────────────────────────────────────────┐" "DarkCyan"
-    Write-Color "  │        MAKE MULTI CLI  🚀  v3.0          │" "Cyan"
+    Write-Color "  │        MAKE MULTI CLI  🚀  v1.2          │" "Cyan"
     Write-Color "  └─────────────────────────────────────────┘" "DarkCyan"
     Write-Host ""
     Write-Color "  COMMANDS" "Yellow"
     Write-Color "  ─────────────────────────────────────────" "DarkGray"
     Write-Color "  project <lang> <name>   Create a new project" "White"
     Write-Color "  clone   <name> <new>    Clone a project" "White"
-    Write-Color "  search  <keyword>       Search projects by name or lang" "White"
+    Write-Color "  search  <keyword>       Search by name, lang or tag" "White"
     Write-Color "  recent                  Show recently modified projects" "White"
     Write-Color "  export  <name>          Export project as .zip" "White"
     Write-Color "  list                    List all projects" "White"
@@ -555,6 +769,13 @@ function Help {
     Write-Color "  delete  <name>          Delete a project" "White"
     Write-Color "  init    <name>          Git init + first commit" "White"
     Write-Color "  deps    <name>          Install dependencies" "White"
+    Write-Host ""
+    Write-Color "  notes   <name> [teksti] Set/view project note" "White"
+    Write-Color "  tag     <name> <tag>    Add tag  (e.g. work, hobby)" "White"
+    Write-Color "  tag     <name> -<tag>   Remove tag" "White"
+    Write-Color "  history [filter]        Show operation log" "White"
+    Write-Color "  history clear           Clear the log" "White"
+    Write-Host ""
     Write-Color "  ui                      Arrow-key navigation 🎮" "White"
     Write-Color "  help                    Show this help" "White"
     Write-Color "  exit                    Quit" "White"
@@ -581,7 +802,7 @@ function Show-Banner {
     Write-Host ""
     Write-Color "  ╔══════════════════════════════════════════╗" "Cyan"
     Write-Color "  ║                                          ║" "Cyan"
-    Write-Color "  ║        MAKE MULTI CLI  🚀  v3.0          ║" "Cyan"
+    Write-Color "  ║        MAKE MULTI CLI  🚀  v1.2          ║" "Cyan"
     Write-Color "  ║   scaffold · run · manage · ship fast    ║" "DarkCyan"
     Write-Color "  ║                                          ║" "Cyan"
     Write-Color "  ╚══════════════════════════════════════════╝" "Cyan"
@@ -620,12 +841,14 @@ function Show-UIHeader {
 function Get-ProjectPreview($name) {
     $target = Join-Path $ROOT $name
     $meta   = Join-Path $target "meta.json"
-    $lang   = "?"; $created = ""; $files = @()
+    $lang   = "?"; $created = ""; $files = @(); $tags = @(); $note = ""
 
     if (Test-Path $meta) {
         $data    = Get-Content $meta | ConvertFrom-Json
         $lang    = $data.lang
         $created = $data.created
+        if ($data.PSObject.Properties["tags"]) { $tags = @($data.tags) }
+        if ($data.PSObject.Properties["note"]) { $note = $data.note }
     }
     if (Test-Path $target) {
         $files = @(Get-ChildItem $target -Recurse -File | ForEach-Object {
@@ -637,9 +860,8 @@ function Get-ProjectPreview($name) {
 
     $icon  = Get-LangIcon $lang
     $color = Get-LangColor $lang
-    $W     = 28  # panel width
+    $W     = 28
 
-    # Print panel lines
     Write-Color "  ┌$('─' * $W)┐" "DarkGray"
 
     $title = " $icon $name"
@@ -662,6 +884,26 @@ function Get-ProjectPreview($name) {
         $lp = $W - $line.Length - 1
         if ($lp -lt 0) { $lp = 0; $line = $line.Substring(0, $W-1) }
         Write-Host "  │$line$((' ' * $lp))│" -ForegroundColor DarkGray
+    }
+
+    # Tags
+    if ($tags.Count -gt 0) {
+        $tagLine = " tags:   $(($tags | ForEach-Object { "#$_" }) -join ' ')"
+        $tlp = $W - $tagLine.Length - 1
+        if ($tlp -lt 0) { $tagLine = $tagLine.Substring(0, $W - 4) + "..."; $tlp = 1 }
+        Write-Host -NoNewline "  │"
+        Write-Host -NoNewline $tagLine -ForegroundColor DarkCyan
+        Write-Host "$((' ' * $tlp))│" -ForegroundColor DarkGray
+    }
+
+    # Note
+    if ($note) {
+        $noteLine = " 📝 $note"
+        $nlp = $W - $noteLine.Length - 1
+        if ($nlp -lt 0) { $noteLine = $noteLine.Substring(0, $W - 4) + "..."; $nlp = 1 }
+        Write-Host -NoNewline "  │"
+        Write-Host -NoNewline $noteLine -ForegroundColor White
+        Write-Host "$((' ' * $nlp))│" -ForegroundColor DarkGray
     }
 
     Write-Color "  ├$('─' * $W)┤" "DarkGray"
@@ -694,7 +936,6 @@ function Show-NewProject-UI {
     $langs     = @("node","python","react","go","rust","ts","bun")
     $langSel   = 0
 
-    # Step 1: Pick language
     while ($true) {
         Clear-Host
         Show-UIHeader
@@ -730,7 +971,6 @@ function Show-NewProject-UI {
 
     $chosenLang = $langs[$langSel]
 
-    # Step 2: Enter name
     Clear-Host
     Show-UIHeader
     Write-Color "  NEW PROJECT — Step 2: Enter project name" "Yellow"
@@ -761,24 +1001,23 @@ function Show-NewProject-UI {
 # -------------------------
 function Show-ProjectList-UI {
     Ensure-Root
-
     $selected = 0
 
     while ($true) {
         $projects = @(Get-ChildItem $ROOT -Directory)
+        if ($selected -ge $projects.Count -and $projects.Count -gt 0) {
+            $selected = $projects.Count - 1
+        }
 
         Clear-Host
         Show-UIHeader
-
-        # LEFT COLUMN — project list
-        Write-Color "  📦  PROJECTS  ($($projects.Count))   [N = new project]" "Yellow"
+        Write-Color "  📦  PROJECTS  ($($projects.Count))" "Yellow"
         Write-Color "  $('─' * 44)" "DarkGray"
         Write-Host ""
 
         if ($projects.Count -eq 0) {
             Write-Warn "  No projects yet."
             Write-Host ""
-            Write-Color "  Press N to create one, Esc to exit." "DarkGray"
         } else {
             for ($i = 0; $i -lt $projects.Count; $i++) {
                 $p    = $projects[$i]
@@ -786,8 +1025,7 @@ function Show-ProjectList-UI {
                 $lang = "?"; $date = ""
                 if (Test-Path $meta) {
                     $data = Get-Content $meta | ConvertFrom-Json
-                    $lang = $data.lang
-                    $date = $data.created
+                    $lang = $data.lang; $date = $data.created
                 }
                 $icon  = Get-LangIcon $lang
                 $color = Get-LangColor $lang
@@ -795,28 +1033,33 @@ function Show-ProjectList-UI {
                 if ($i -eq $selected) {
                     Write-Host -NoNewline "  "
                     Write-Host -NoNewline " ❯ $icon  " -ForegroundColor Black -BackgroundColor Cyan
-                    Write-Host -NoNewline $p.Name -ForegroundColor Black -BackgroundColor Cyan
-                    Write-Host ""
+                    Write-Host $p.Name -ForegroundColor Black -BackgroundColor Cyan
                 } else {
                     Write-Host -NoNewline "     $icon  "
                     Write-Host $p.Name -ForegroundColor $color
                 }
             }
 
-            # PREVIEW PANEL for selected project
-            if ($projects.Count -gt 0) {
-                Write-Host ""
-                Write-Color "  $('─' * 44)" "DarkGray"
-                Get-ProjectPreview $projects[$selected].Name
-            }
+            Write-Host ""
+            Write-Color "  $('─' * 44)" "DarkGray"
+            Get-ProjectPreview $projects[$selected].Name
         }
 
         Write-Host ""
-        Write-Color "  ↑↓ navigate   Enter open   N new   Esc exit" "DarkGray"
+        Write-Color "  ↑↓ navigate   Enter open   N new project   Esc exit" "DarkGray"
 
-        $key = Read-ArrowKey
-        # Also check if user typed 'n'
-        if ($key -eq $null) { continue }
+        $rawKey = [Console]::ReadKey($true)
+
+        if ($rawKey.KeyChar -eq 'n' -or $rawKey.KeyChar -eq 'N') {
+            Show-NewProject-UI | Out-Null
+            continue
+        }
+
+        $key = $null
+        if ($rawKey.Key -eq "UpArrow")   { $key = "UP" }
+        if ($rawKey.Key -eq "DownArrow") { $key = "DOWN" }
+        if ($rawKey.Key -eq "Enter")     { $key = "ENTER" }
+        if ($rawKey.Key -eq "Escape")    { $key = "ESC" }
 
         switch ($key) {
             "UP"    {
@@ -831,22 +1074,11 @@ function Show-ProjectList-UI {
             }
             "ENTER" {
                 if ($projects.Count -gt 0) {
-                    $result = Show-ProjectActions-UI $projects[$selected].Name
-                    $newProjects = @(Get-ChildItem $ROOT -Directory)
-                    if ($selected -ge $newProjects.Count -and $newProjects.Count -gt 0) {
-                        $selected = $newProjects.Count - 1
-                    }
+                    Show-ProjectActions-UI $projects[$selected].Name | Out-Null
                 }
-            }
-            "RIGHT" {
-                # 'n' mapped via ReadKey char check below
             }
             "ESC"   { return }
         }
-
-        # Check for 'n' key press (ReadKey char)
-        # We re-check since ReadKey is consumed — handled via a second ReadKey isn't possible.
-        # Instead we add a char check inside Read-ArrowKey via the returned key.
     }
 }
 
@@ -862,6 +1094,8 @@ function Show-ProjectActions-UI($name) {
         @{ label = "📦  Install deps";   cmd = "deps"   }
         @{ label = "🔧  Git init";       cmd = "init"   }
         @{ label = "📤  Export (zip)";   cmd = "export" }
+        @{ label = "📝  Note";           cmd = "note"   }
+        @{ label = "🏷   Tag";           cmd = "tag"    }
         @{ label = "✏  Rename";         cmd = "rename" }
         @{ label = "🗑  Delete";         cmd = "delete" }
         @{ label = "← Back";            cmd = "back"   }
@@ -883,7 +1117,6 @@ function Show-ProjectActions-UI($name) {
         Clear-Host
         Show-UIHeader
 
-        # Header
         Write-Host -NoNewline "  $icon  "
         Write-Host $name -ForegroundColor $color
         Write-Host "     lang: $lang   created: $created" -ForegroundColor DarkGray
@@ -950,6 +1183,22 @@ function Show-ProjectActions-UI($name) {
                         Write-Host ""; Write-Color "  Press Enter to continue..." "DarkGray"
                         Read-ArrowKey | Out-Null
                     }
+                    "note" {
+                        Clear-Host; Write-Host ""
+                        Set-Note $name
+                        Write-Host ""; Write-Color "  Press Enter to continue..." "DarkGray"
+                        Read-ArrowKey | Out-Null
+                    }
+                    "tag" {
+                        Clear-Host; Write-Host ""
+                        Write-Color "  🏷️  Tag for '$name'" "Cyan"
+                        Write-Color "  Add: work   Remove: -work   Enter to view" "DarkGray"
+                        Write-Host -NoNewline "  ❯ "
+                        $t = Read-Host
+                        Set-Tag $name $t
+                        Write-Host ""; Write-Color "  Press Enter to continue..." "DarkGray"
+                        Read-ArrowKey | Out-Null
+                    }
                     "rename" {
                         Clear-Host; Write-Host ""
                         Write-Color "  New name for '$name':" "Cyan"
@@ -969,6 +1218,7 @@ function Show-ProjectActions-UI($name) {
                         $confirm = Read-Host
                         if ($confirm -eq "y" -or $confirm -eq "yes") {
                             Remove-Item (Join-Path $ROOT $name) -Recurse -Force
+                            Write-History "DELETED" "$name"
                             Write-Success "Deleted: $name"
                             Write-Host ""; Write-Color "  Press Enter to continue..." "DarkGray"
                             Read-ArrowKey | Out-Null
@@ -982,96 +1232,6 @@ function Show-ProjectActions-UI($name) {
     }
 }
 
-# Override Show-ProjectList-UI to properly handle 'N' key
-function Show-ProjectList-UI {
-    Ensure-Root
-    $selected = 0
-
-    while ($true) {
-        $projects = @(Get-ChildItem $ROOT -Directory)
-        if ($selected -ge $projects.Count -and $projects.Count -gt 0) {
-            $selected = $projects.Count - 1
-        }
-
-        Clear-Host
-        Show-UIHeader
-        Write-Color "  📦  PROJECTS  ($($projects.Count))" "Yellow"
-        Write-Color "  $('─' * 44)" "DarkGray"
-        Write-Host ""
-
-        if ($projects.Count -eq 0) {
-            Write-Warn "  No projects yet."
-            Write-Host ""
-        } else {
-            for ($i = 0; $i -lt $projects.Count; $i++) {
-                $p    = $projects[$i]
-                $meta = Join-Path $p.FullName "meta.json"
-                $lang = "?"; $date = ""
-                if (Test-Path $meta) {
-                    $data = Get-Content $meta | ConvertFrom-Json
-                    $lang = $data.lang; $date = $data.created
-                }
-                $icon  = Get-LangIcon $lang
-                $color = Get-LangColor $lang
-
-                if ($i -eq $selected) {
-                    Write-Host -NoNewline "  "
-                    Write-Host -NoNewline " ❯ $icon  " -ForegroundColor Black -BackgroundColor Cyan
-                    Write-Host $p.Name -ForegroundColor Black -BackgroundColor Cyan
-                } else {
-                    Write-Host -NoNewline "     $icon  "
-                    Write-Host $p.Name -ForegroundColor $color
-                }
-            }
-
-            # Preview panel
-            Write-Host ""
-            Write-Color "  $('─' * 44)" "DarkGray"
-            Get-ProjectPreview $projects[$selected].Name
-        }
-
-        Write-Host ""
-        Write-Color "  ↑↓ navigate   Enter open   N new project   Esc exit" "DarkGray"
-
-        # Read raw key including character
-        $rawKey = [Console]::ReadKey($true)
-
-        # Handle 'n' or 'N' for new project
-        if ($rawKey.KeyChar -eq 'n' -or $rawKey.KeyChar -eq 'N') {
-            $result = Show-NewProject-UI
-            continue
-        }
-
-        $key = $null
-        if ($rawKey.Key -eq "UpArrow")   { $key = "UP" }
-        if ($rawKey.Key -eq "DownArrow") { $key = "DOWN" }
-        if ($rawKey.Key -eq "Enter")     { $key = "ENTER" }
-        if ($rawKey.Key -eq "Escape")    { $key = "ESC" }
-
-        switch ($key) {
-            "UP"    {
-                if ($projects.Count -gt 0) {
-                    if ($selected -gt 0) { $selected-- } else { $selected = $projects.Count - 1 }
-                }
-            }
-            "DOWN"  {
-                if ($projects.Count -gt 0) {
-                    if ($selected -lt $projects.Count - 1) { $selected++ } else { $selected = 0 }
-                }
-            }
-            "ENTER" {
-                if ($projects.Count -gt 0) {
-                    Show-ProjectActions-UI $projects[$selected].Name | Out-Null
-                }
-            }
-            "ESC"   { return }
-        }
-    }
-}
-
-# -------------------------
-# CLI LOOP
-# -------------------------
 # -------------------------
 # STARTUP MODE PICKER
 # -------------------------
@@ -1080,15 +1240,12 @@ function Show-ModePicker {
     Write-Host ""
     Write-Color "  ╔══════════════════════════════════════════╗" "Cyan"
     Write-Color "  ║                                          ║" "Cyan"
-    Write-Color "  ║        MAKE MULTI CLI  🚀  v3.0          ║" "Cyan"
+    Write-Color "  ║        MAKE MULTI CLI  🚀  v1.2          ║" "Cyan"
     Write-Color "  ║   scaffold · run · manage · ship fast    ║" "DarkCyan"
     Write-Color "  ║                                          ║" "Cyan"
     Write-Color "  ╚══════════════════════════════════════════╝" "Cyan"
     Write-Host ""
     Write-Color "  Choose your mode:" "Yellow"
-    Write-Host ""
-    Write-Color "     🎮  UI Mode    — arrow-key navigation" "White"
-    Write-Color "     ⌨️   Text Mode  — classic CLI commands" "White"
     Write-Host ""
 
     $selected = 0
@@ -1127,6 +1284,9 @@ if ($startMode -eq "ui") {
 
 Show-Banner
 
+# -------------------------
+# CLI LOOP
+# -------------------------
 while ($true) {
     Write-Host ""
     Write-Host -NoNewline "  "
@@ -1137,6 +1297,8 @@ while ($true) {
     $cmd   = $parts[0].ToLower()
     $arg1  = if ($parts.Count -gt 1) { $parts[1] } else { $null }
     $arg2  = if ($parts.Count -gt 2) { $parts[2] } else { $null }
+    # Tuki monisanaisille noteille: "notes myproject tämä on pitkä teksti"
+    $rest  = if ($parts.Count -gt 2) { ($parts[2..($parts.Count-1)] -join " ") } else { $null }
 
     switch ($cmd) {
         "project" { New-Template $arg1 $arg2 }
@@ -1153,6 +1315,12 @@ while ($true) {
         "delete"  { Delete-Project $arg1 }
         "init"    { Init-Git $arg1 }
         "deps"    { Install-Deps $arg1 }
+        "notes"   { Set-Note $arg1 $rest }
+        "tag"     { Set-Tag $arg1 $arg2 }
+        "history" {
+            if ($arg1 -eq "clear") { Clear-History }
+            else                   { Show-History $arg1 }
+        }
         "help"    { Help }
         "ui"      { Show-ProjectList-UI; Show-Banner }
         "exit"    { Write-Host ""; Write-Color "  👋  Bye!" "Cyan"; Write-Host ""; exit }
