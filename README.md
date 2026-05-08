@@ -2,12 +2,6 @@ Make Multi CLI 🚀
 
 Epic project scaffolding tool for developers — built in PowerShell.
 
-  ╔══════════════════════════════════════════╗
-  ║                                          ║
-  ║        MAKE MULTI CLI  🚀  v3.0          ║
-  ║   scaffold · run · manage · ship fast    ║
-  ║                                          ║
-  ╚══════════════════════════════════════════╝
 Features
 
 Two modes — classic text CLI or full arrow-key UI navigator
@@ -46,21 +40,6 @@ README.md
 package.json / tsconfig.json where applicable
 meta.json storing name, language and creation date
 
-
-Project Structure
-your-folder/
-├── make.ps1
-└── projects/
-    ├── my-api/
-    │   ├── index.js
-    │   ├── package.json
-    │   ├── .gitignore
-    │   ├── README.md
-    │   └── meta.json
-    └── dashboard/
-        ├── App.jsx
-        ├── package.json
-        └── ...
 
 Tips
 
