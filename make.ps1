@@ -6,9 +6,86 @@
 $ROOT        = Join-Path $PWD "projects"
 $HISTORY_LOG = Join-Path $PWD "make-history.log"
 
+function Show-Notification {
+    param(
+        [string]$Title = "MAKE CLI",
+        [string]$Message = "make ready 🚀"
+    )
+
+    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+    [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+
+    $template = @"
+<toast>
+  <visual>
+    <binding template="ToastGeneric">
+      <text>$Title</text>
+      <text>$Message</text>
+    </binding>
+  </visual>
+</toast>
+"@
+
+    $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+    $xml.LoadXml($template)
+
+    $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+    $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("MAKE CLI")
+    $notifier.Show($toast)
+}
+
 # -------------------------
 # COLORS
 # -------------------------
+function Show-SplashScreen {
+    Clear-Host
+
+    Write-Host ""
+    Write-Host "  ███╗   ███╗ █████╗ ██╗  ██╗███████╗" -ForegroundColor Cyan
+    Write-Host "  ████╗ ████║██╔══██╗██║ ██╔╝██╔════╝" -ForegroundColor Cyan
+    Write-Host "  ██╔████╔██║███████║█████╔╝ █████╗  " -ForegroundColor Cyan
+    Write-Host "  ██║╚██╔╝██║██╔══██║██╔═██╗ ██╔══╝  " -ForegroundColor Cyan
+    Write-Host "  ██║ ╚═╝ ██║██║  ██║██║  ██╗███████╗" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "               make gen" -ForegroundColor DarkCyan
+    Write-Host ""
+
+    $messages = @(
+        "Initializing core engine",
+        "Loading project templates",
+        "Syncing workspace",
+        "Compiling CLI modules",
+        "Injecting dev tools",
+        "Finalizing environment"
+    )
+
+    $width = 30
+
+    for ($i = 0; $i -le $width; $i++) {
+
+        # progress bar
+        $percent = [math]::Round(($i / $width) * 100)
+        $bar = ("█" * $i) + ("░" * ($width - $i))
+
+        # fake loading message (random)
+        if ($i % 5 -eq 0) {
+            $msg = Get-Random $messages
+            Write-Host "  ⚙  $msg..." -ForegroundColor DarkGray
+        }
+
+        Write-Host -NoNewline "`r  Loading [$bar] $percent%   " -ForegroundColor Cyan
+
+        Start-Sleep -Milliseconds (50 + (Get-Random -Minimum 0 -Maximum 40))
+    }
+
+    Write-Host ""
+    Write-Host ""
+    Write-Host "  ✔ Ready to generate projects." -ForegroundColor Green
+    Write-Host ""
+
+    Start-Sleep -Milliseconds 500
+}
+Show-Notification "MAKE CLI" "Project generator ready 🚀"
 function Write-Color($text, $color = "White") {
     Write-Host $text -ForegroundColor $color
 }
@@ -16,7 +93,7 @@ function Write-Success($text) { Write-Color "  ✅  $text" "Green" }
 function Write-Error($text)   { Write-Color "  ❌  $text" "Red" }
 function Write-Info($text)    { Write-Color "  ℹ️   $text" "Cyan" }
 function Write-Warn($text)    { Write-Color "  ⚠️   $text" "Yellow" }
-
+Show-SplashScreen
 # -------------------------
 # LANG COLORS + ICONS
 # -------------------------
@@ -750,7 +827,7 @@ function Clear-History {
 function Help {
     Write-Host ""
     Write-Color "  ┌─────────────────────────────────────────┐" "DarkCyan"
-    Write-Color "  │        MAKE MULTI CLI  🚀  v1.2          │" "Cyan"
+    Write-Color "  │        MAKE MULTI CLI  🚀  v1.3          │" "Cyan"
     Write-Color "  └─────────────────────────────────────────┘" "DarkCyan"
     Write-Host ""
     Write-Color "  COMMANDS" "Yellow"
@@ -802,7 +879,7 @@ function Show-Banner {
     Write-Host ""
     Write-Color "  ╔══════════════════════════════════════════╗" "Cyan"
     Write-Color "  ║                                          ║" "Cyan"
-    Write-Color "  ║        MAKE MULTI CLI  🚀  v1.2          ║" "Cyan"
+    Write-Color "  ║        MAKE MULTI CLI  🚀  v1.3          ║" "Cyan"
     Write-Color "  ║   scaffold · run · manage · ship fast    ║" "DarkCyan"
     Write-Color "  ║                                          ║" "Cyan"
     Write-Color "  ╚══════════════════════════════════════════╝" "Cyan"
@@ -1240,7 +1317,7 @@ function Show-ModePicker {
     Write-Host ""
     Write-Color "  ╔══════════════════════════════════════════╗" "Cyan"
     Write-Color "  ║                                          ║" "Cyan"
-    Write-Color "  ║        MAKE MULTI CLI  🚀  v1.2          ║" "Cyan"
+    Write-Color "  ║        MAKE MULTI CLI  🚀  v1.3          ║" "Cyan"
     Write-Color "  ║   scaffold · run · manage · ship fast    ║" "DarkCyan"
     Write-Color "  ║                                          ║" "Cyan"
     Write-Color "  ╚══════════════════════════════════════════╝" "Cyan"
