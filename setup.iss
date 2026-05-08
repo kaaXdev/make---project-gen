@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "make"
-#define MyAppVersion "1.2"
+#define MyAppVersion "1.3"
 #define MyAppPublisher "kaasoftware"
 #define MyAppURL "https://kaa.ct.ws"
 #define MyAppExeName "make.exe"
@@ -12,7 +12,7 @@
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{0436F8CD-9EF2-475E-B66F-6AF26ACFBCC8}
+AppId={{79EBFC5E-4D90-4260-A095-B0E55DED8949}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -22,15 +22,17 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 UninstallDisplayIcon={app}\{#MyAppExeName}
-DisableProgramGroupPage=yes
+DefaultGroupName={#MyAppName}
+AllowNoIcons=yes
 LicenseFile=C:\Users\kaapc\Documents\make - project gen\install\mit.txt
 InfoBeforeFile=C:\Users\kaapc\Documents\make - project gen\install\credit.txt
 ; Remove the following line to run in administrative install mode (install for all users).
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-OutputBaseFilename=make1.2-installer
+OutputDir=C:\Users\kaapc\Documents
+OutputBaseFilename=setup_make1.3
 SolidCompression=yes
-WizardStyle=classic dark
+WizardStyle=modern dynamic
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -38,10 +40,14 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "C:\Users\kaapc\Documents\make - project gen\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\kaapc\Documents\make - project gen\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; NOTE: Use the "issigverify" flag or the "Hash" parameter to verify downloads
+Source: "https://github.com/kaaXdev/make---project-gen/archive/refs/tags/1.2.zip"; DestDir: "{app}"; DestName: "source-code.zip"; ExternalSize: "1048576000"; Flags: ignoreversion external download
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"
+Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
