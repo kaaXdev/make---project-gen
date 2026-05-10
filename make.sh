@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # =====================================================================
-#  MAKE MULTI CLI  🚀  v3.1
+#  MAKE MULTI CLI  🚀  v3.3
 #  Epic project scaffolding tool for devs
 # =====================================================================
 
 ROOT="$(pwd)/projects"
 HISTORY_LOG="$(pwd)/make-history.log"
+TEMPLATES_DIR="$(pwd)/templates"
+BACKUPS_DIR="$(pwd)/backups"
 
 # -------------------------
 # COLORS
@@ -63,13 +65,6 @@ get_lang_color() {
 # SPLASH SCREEN
 # -------------------------
 show_splash() {
-    clear
-    echo -e "${CYAN} Warning: make gen linux is on beta! We update it soon.${RESET}"
-    sleep 3
-    echo " Running make startup"
-    sleep 1
-    echo " running start screen commands"
-    sleep 3
     clear
     echo ""
     echo -e "${CYAN}  ███╗   ███╗ █████╗ ██╗  ██╗███████╗${RESET}"
@@ -149,7 +144,7 @@ get_gitignore() {
 }
 
 # -------------------------
-# TEMPLATES
+# PROJECT TEMPLATES (new_template)
 # -------------------------
 new_template() {
     local lang="$1"
@@ -175,7 +170,7 @@ new_template() {
     cat > "${target}/README.md" <<EOF
 # ${name}
 
-> Created with **Make Multi CLI** v3.1 🚀
+> Created with **Make Multi CLI** v3.2 🚀
 
 ## Language
 \`${lang}\`
@@ -558,7 +553,6 @@ editor_project() {
     if ! command -v nano &>/dev/null; then write_error "nano not found in PATH"; return; fi
 
     if [[ -n "$file" ]]; then
-        # Open specific file directly
         local filepath="${target}/${file}"
         if [[ ! -f "$filepath" ]]; then
             write_warn "File '${file}' not found — creating new file"
@@ -567,7 +561,6 @@ editor_project() {
         write_history "EDITOR" "${name}/${file}"
         write_success "Closed editor for '${file}' in '${name}'"
     else
-        # Interactive file picker
         echo ""
         write_color "  📂  Files in '${name}'" "$CYAN"
         write_color "  ────────────────────────────────────────" "$DARK_GRAY"
@@ -735,6 +728,7 @@ install_deps() {
 # -------------------------
 # NOTES
 # -------------------------
+
 set_note() {
     local name="$1" note="${2:-}"
     if [[ -z "$name" ]]; then write_error "Usage: notes <name> [teksti]"; return; fi
@@ -793,7 +787,6 @@ set_tag() {
         return
     fi
 
-    # Remove tag
     if [[ "$tag" == -* ]]; then
         local remove="${tag#-}"
         local tmp
@@ -815,7 +808,6 @@ else:
         return
     fi
 
-    # Add tag
     tag="${tag#\#}"
     local tmp
     tmp=$(mktemp)
@@ -866,18 +858,22 @@ show_history() {
             local detail="${BASH_REMATCH[3]}"
             local color icon
             case "$action" in
-                CREATED)      color="$GREEN";     icon="✅" ;;
-                DELETED)      color="$RED";       icon="🗑 " ;;
-                RENAMED)      color="$YELLOW";    icon="✏ " ;;
-                CLONED)       color="$CYAN";      icon="📋" ;;
-                EXPORTED)     color="$DARK_CYAN"; icon="📤" ;;
-                GIT_INIT)     color="$BLUE";      icon="🔧" ;;
-                TAG_ADDED)    color="$MAGENTA";   icon="🏷 " ;;
-                TAG_REMOVED)  color="$MAGENTA";   icon="🏷 " ;;
-                NOTE)         color="$WHITE";     icon="📝" ;;
-                NOTE_CLEARED) color="$DARK_GRAY"; icon="📝" ;;
-                EDITOR)       color="$CYAN";      icon="✏️ " ;;
-                *)            color="$WHITE";     icon="  " ;;
+                CREATED)         color="$GREEN";     icon="✅" ;;
+                DELETED)         color="$RED";       icon="🗑 " ;;
+                RENAMED)         color="$YELLOW";    icon="✏ " ;;
+                CLONED)          color="$CYAN";      icon="📋" ;;
+                EXPORTED)        color="$DARK_CYAN"; icon="📤" ;;
+                GIT_INIT)        color="$BLUE";      icon="🔧" ;;
+                TAG_ADDED)       color="$MAGENTA";   icon="🏷 " ;;
+                TAG_REMOVED)     color="$MAGENTA";   icon="🏷 " ;;
+                NOTE)            color="$WHITE";     icon="📝" ;;
+                NOTE_CLEARED)    color="$DARK_GRAY"; icon="📝" ;;
+                EDITOR)          color="$CYAN";      icon="✏️ " ;;
+                TMPL_SAVED)      color="$GREEN";     icon="💾" ;;
+                TMPL_DELETED)    color="$RED";       icon="🗑 " ;;
+                BACKUP_CREATED)  color="$BLUE";      icon="📦" ;;
+                BACKUP_RESTORED) color="$YELLOW";    icon="♻️ " ;;
+                *)               color="$WHITE";     icon="  " ;;
             esac
             echo -ne "  ${icon}  "
             echo -ne "${DARK_GRAY}${ts}  ${RESET}"
@@ -906,13 +902,580 @@ clear_history() {
     fi
 }
 
+# =====================================================================
+#  TEMPLATE-TALLENNUS
+#  Komennot:
+#    template save <project-name> [template-name]
+#    template list
+#    template use  <template-name> <new-project-name>
+#    template info <template-name>
+#    template delete <template-name>
+# =====================================================================
+
+manage_templates() {
+    local subcmd="${1:-list}"
+    local arg1="${2:-}"
+    local arg2="${3:-}"
+
+    case "$subcmd" in
+        save)   template_save   "$arg1" "$arg2" ;;
+        list)   template_list ;;
+        use)    template_use    "$arg1" "$arg2" ;;
+        info)   template_info   "$arg1" ;;
+        delete) template_delete "$arg1" ;;
+        *)
+            write_error "Tuntematon template-alakomento '${subcmd}'"
+            write_info  "Käyttö: template save|list|use|info|delete"
+            ;;
+    esac
+}
+
+# -------------------------
+# template save <project> [nimi]
+# -------------------------
+template_save() {
+    local project="${1:-}"
+    local tname="${2:-$1}"
+    if [[ -z "$project" ]]; then
+        write_error "Käyttö: template save <project-name> [template-name]"
+        return
+    fi
+
+    local src="${ROOT}/${project}"
+    if [[ ! -d "$src" ]]; then write_error "Projektia '${project}' ei löydy"; return; fi
+
+    mkdir -p "$TEMPLATES_DIR"
+    local dst="${TEMPLATES_DIR}/${tname}"
+
+    if [[ -d "$dst" ]]; then
+        write_warn "Template '${tname}' on jo olemassa. Ylikirjoita? (y/n)"
+        printf "  > "
+        read -r confirm
+        [[ "$confirm" != "y" && "$confirm" != "yes" ]] && write_info "Peruutettu" && return
+        rm -rf "$dst"
+    fi
+
+    cp -r "$src" "$dst"
+
+    # Kirjoita template-metadata
+    local lang="unknown"
+    if [[ -f "${src}/meta.json" ]]; then
+        lang=$(python3 -c "import json; d=json.load(open('${src}/meta.json')); print(d.get('lang','unknown'))" 2>/dev/null)
+    fi
+    local saved_at
+    saved_at=$(date '+%Y-%m-%d %H:%M:%S')
+
+    cat > "${dst}/.template-meta.json" <<EOF
+{
+  "template_name": "${tname}",
+  "source_project": "${project}",
+  "lang": "${lang}",
+  "saved_at": "${saved_at}"
+}
+EOF
+
+    write_history "TMPL_SAVED" "${tname}  (from ${project})"
+    write_success "Template '${tname}' tallennettu"
+    write_color "     📁  ${dst}" "$DARK_GRAY"
+}
+
+# -------------------------
+# template list
+# -------------------------
+template_list() {
+    mkdir -p "$TEMPLATES_DIR"
+    echo ""
+    write_color "  🗂️   TEMPLATES" "$YELLOW"
+    write_color "  ────────────────────────────────────────" "$DARK_GRAY"
+
+    local count=0
+    while IFS= read -r -d '' dir; do
+        local tname
+        tname=$(basename "$dir")
+        local tmeta="${dir}/.template-meta.json"
+        local lang="?" saved_at="" source=""
+        if [[ -f "$tmeta" ]]; then
+            lang=$(python3     -c "import json; d=json.load(open('${tmeta}')); print(d.get('lang','?'))"           2>/dev/null)
+            saved_at=$(python3 -c "import json; d=json.load(open('${tmeta}')); print(d.get('saved_at',''))"        2>/dev/null)
+            source=$(python3   -c "import json; d=json.load(open('${tmeta}')); print(d.get('source_project',''))"  2>/dev/null)
+        fi
+        local icon color
+        icon=$(get_lang_icon "$lang")
+        color=$(get_lang_color "$lang")
+        echo -ne "  ${icon}  "
+        echo -e "${color}${tname}${RESET}   ${DARK_GRAY}${lang}  |  saved ${saved_at}  (from: ${source})${RESET}"
+        ((count++))
+    done < <(find "$TEMPLATES_DIR" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | sort -z)
+
+    if [[ $count -eq 0 ]]; then
+        write_warn "Ei tallennettuja templateja."
+        write_info "Luo template komennolla: template save <project-name>"
+    fi
+    echo ""
+}
+
+# -------------------------
+# template use <template-name> <new-project-name>
+# -------------------------
+template_use() {
+    local tname="${1:-}"
+    local newname="${2:-}"
+    if [[ -z "$tname" || -z "$newname" ]]; then
+        write_error "Käyttö: template use <template-name> <new-project-name>"
+        return
+    fi
+
+    local tsrc="${TEMPLATES_DIR}/${tname}"
+    if [[ ! -d "$tsrc" ]]; then
+        write_error "Templatea '${tname}' ei löydy — listaa: template list"
+        return
+    fi
+
+    ensure_root
+    local dst="${ROOT}/${newname}"
+    if [[ -d "$dst" ]]; then write_error "Projekti '${newname}' on jo olemassa"; return; fi
+
+    cp -r "$tsrc" "$dst"
+    # Poista template-meta uudesta projektista
+    rm -f "${dst}/.template-meta.json"
+
+    # Luo/päivitä meta.json uudelle projektille
+    local lang="unknown"
+    if [[ -f "${tsrc}/.template-meta.json" ]]; then
+        lang=$(python3 -c "import json; d=json.load(open('${tsrc}/.template-meta.json')); print(d.get('lang','unknown'))" 2>/dev/null)
+    fi
+    local created
+    created=$(date '+%Y-%m-%d %H:%M:%S')
+
+    cat > "${dst}/meta.json" <<EOF
+{
+  "name": "${newname}",
+  "lang": "${lang}",
+  "created": "${created}",
+  "tags": [],
+  "note": "Created from template: ${tname}"
+}
+EOF
+
+    # Korvaa mahdolliset vanhat projektin nimet uusilla tiedostoissa
+    # (README, package.json)
+    local old_name
+    old_name=$(python3 -c "
+import json, os
+p='${tsrc}/.template-meta.json'
+if os.path.exists(p):
+    print(json.load(open(p)).get('source_project',''))
+" 2>/dev/null)
+
+    if [[ -n "$old_name" && "$old_name" != "$newname" ]]; then
+        for f in "${dst}/README.md" "${dst}/package.json"; do
+            [[ -f "$f" ]] && sed -i "s/${old_name}/${newname}/g" "$f"
+        done
+    fi
+
+    write_history "CREATED" "${lang}/${newname}  (from template: ${tname})"
+    write_success "Projekti '${newname}' luotu templatesta '${tname}'"
+    write_color "     📁  ${dst}" "$DARK_GRAY"
+}
+
+# -------------------------
+# template info <template-name>
+# -------------------------
+template_info() {
+    local tname="${1:-}"
+    if [[ -z "$tname" ]]; then write_error "Käyttö: template info <template-name>"; return; fi
+
+    local tdir="${TEMPLATES_DIR}/${tname}"
+    if [[ ! -d "$tdir" ]]; then write_error "Templatea '${tname}' ei löydy"; return; fi
+
+    local tmeta="${tdir}/.template-meta.json"
+    local lang="?" saved_at="" source=""
+    if [[ -f "$tmeta" ]]; then
+        lang=$(python3     -c "import json; d=json.load(open('${tmeta}')); print(d.get('lang','?'))"          2>/dev/null)
+        saved_at=$(python3 -c "import json; d=json.load(open('${tmeta}')); print(d.get('saved_at',''))"       2>/dev/null)
+        source=$(python3   -c "import json; d=json.load(open('${tmeta}')); print(d.get('source_project',''))" 2>/dev/null)
+    fi
+
+    local files
+    files=$(find "$tdir" -type f ! -name '.template-meta.json' | wc -l)
+    local size_kb
+    size_kb=$(du -sk "$tdir" 2>/dev/null | awk '{print $1}')
+    local color
+    color=$(get_lang_color "$lang")
+
+    echo ""
+    write_color "  📋  Template: ${tname}" "$CYAN"
+    write_color "  ────────────────────────────────────────" "$DARK_GRAY"
+    echo -ne "  🔧  Language: "; echo -e "${color}${lang}${RESET}"
+    write_color "  🗓️   Saved:    ${saved_at}" "$WHITE"
+    write_color "  📂  Source:   ${source}" "$WHITE"
+    write_color "  📄  Files:    ${files}" "$WHITE"
+    write_color "  💾  Size:     ${size_kb} KB" "$WHITE"
+    echo ""
+    write_color "  Files:" "$DARK_GRAY"
+    find "$tdir" -type f ! -name '.template-meta.json' | while read -r f; do
+        local rel="${f#$tdir/}"
+        write_color "    • ${rel}" "$DARK_GRAY"
+    done
+    echo ""
+    write_info "Luo projekti tästä: template use ${tname} <projektin-nimi>"
+    echo ""
+}
+
+# -------------------------
+# template delete <template-name>
+# -------------------------
+template_delete() {
+    local tname="${1:-}"
+    if [[ -z "$tname" ]]; then write_error "Käyttö: template delete <template-name>"; return; fi
+
+    local tdir="${TEMPLATES_DIR}/${tname}"
+    if [[ ! -d "$tdir" ]]; then write_error "Templatea '${tname}' ei löydy"; return; fi
+
+    write_warn "Poistetaanko template '${tname}'? (y/n)"
+    printf "  > "
+    read -r confirm
+    if [[ "$confirm" == "y" || "$confirm" == "yes" ]]; then
+        rm -rf "$tdir"
+        write_history "TMPL_DELETED" "$tname"
+        write_success "Template '${tname}' poistettu"
+    else
+        write_info "Peruutettu"
+    fi
+}
+
+# =====================================================================
+#  BACKUP & RESTORE
+#  Komennot:
+#    backup              — varmuuskopioi kaikki projektit aikaleimalla
+#    backup list         — listaa varmuuskopiot
+#    restore <tiedosto>  — palauta varmuuskopiosta
+# =====================================================================
+
+manage_backup() {
+    local subcmd="${1:-create}"
+    local arg1="${2:-}"
+
+    case "$subcmd" in
+        list)         backup_list ;;
+        ""|create)    backup_create ;;
+        *)
+            # Jos annetaan suoraan tiedostonimi, tulkitaan restore
+            write_error "Käyttö: backup [list]  tai  restore <backup-tiedosto>"
+            ;;
+    esac
+}
+
+# -------------------------
+# backup (luo)
+# -------------------------
+backup_create() {
+    if ! command -v zip &>/dev/null; then write_error "zip ei löydy PATH:sta"; return; fi
+
+    ensure_root
+    mkdir -p "$BACKUPS_DIR"
+
+    local ts
+    ts=$(date '+%Y%m%d_%H%M%S')
+    local zip_name="backup_${ts}.zip"
+    local zip_path="${BACKUPS_DIR}/${zip_name}"
+
+    # Laske projektien määrä
+    local count
+    count=$(find "$ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+
+    if [[ $count -eq 0 ]]; then
+        write_warn "Ei projekteja varmuuskopioitavaksi"
+        return
+    fi
+
+    write_info "Varmuuskopioidaan ${count} projekti(a)..."
+
+    (cd "$(dirname "$ROOT")" && zip -r "$zip_path" "$(basename "$ROOT")" -x "*.DS_Store" -x "*/node_modules/*" -x "*/.git/*" -x "*/target/*" -x "*/venv/*") && {
+        local size_kb
+        size_kb=$(du -sk "$zip_path" 2>/dev/null | awk '{print $1}')
+        write_history "BACKUP_CREATED" "${zip_name}  (${count} projektia, ${size_kb} KB)"
+        write_success "Varmuuskopio luotu: ${zip_name}"
+        write_color "     📦  ${zip_path}  (${size_kb} KB)" "$DARK_GRAY"
+    } || write_error "Varmuuskopiointi epäonnistui"
+}
+
+# -------------------------
+# backup list
+# -------------------------
+backup_list() {
+    mkdir -p "$BACKUPS_DIR"
+    echo ""
+    write_color "  📦  VARMUUSKOPIOT" "$YELLOW"
+    write_color "  ────────────────────────────────────────" "$DARK_GRAY"
+
+    local count=0
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        local fname
+        fname=$(basename "$f")
+        local size_kb
+        size_kb=$(du -sk "$f" 2>/dev/null | awk '{print $1}')
+        local mtime
+        mtime=$(date -r "$f" '+%Y-%m-%d %H:%M' 2>/dev/null || stat -c '%y' "$f" 2>/dev/null | cut -d'.' -f1)
+        echo -e "  📦  ${WHITE}${fname}${RESET}  ${DARK_GRAY}${mtime}  ${size_kb} KB${RESET}"
+        ((count++))
+    done < <(find "$BACKUPS_DIR" -maxdepth 1 -name "*.zip" 2>/dev/null | sort -r)
+
+    if [[ $count -eq 0 ]]; then
+        write_warn "Ei varmuuskopioita — luo komennolla: backup"
+    else
+        echo ""
+        write_info "Palauta komennolla: restore <tiedostonimi>"
+    fi
+    echo ""
+}
+
+# -------------------------
+# restore <tiedosto>
+# -------------------------
+restore_backup() {
+    local arg="${1:-}"
+    if [[ -z "$arg" ]]; then
+        write_error "Käyttö: restore <backup-tiedostonimi>"
+        write_info  "Listaa varmuuskopiot: backup list"
+        return
+    fi
+
+    # Salli pelkkä tiedostonimi tai koko polku
+    local zip_path
+    if [[ -f "$arg" ]]; then
+        zip_path="$arg"
+    elif [[ -f "${BACKUPS_DIR}/${arg}" ]]; then
+        zip_path="${BACKUPS_DIR}/${arg}"
+    else
+        write_error "Varmuuskopiota '${arg}' ei löydy"
+        write_info  "Listaa varmuuskopiot: backup list"
+        return
+    fi
+
+    if ! command -v unzip &>/dev/null; then write_error "unzip ei löydy PATH:sta"; return; fi
+
+    echo ""
+    write_warn "VAROITUS: Tämä ylikirjoittaa nykyiset projektit!"
+    write_color "  Varmuuskopio: $(basename "$zip_path")" "$WHITE"
+    write_warn "Jatketaanko? (y/n)"
+    printf "  > "
+    read -r confirm
+    if [[ "$confirm" != "y" && "$confirm" != "yes" ]]; then
+        write_info "Peruutettu"
+        return
+    fi
+
+    # Tee automaattinen varmuuskopio nykyisistä ennen palautusta
+    local current_count
+    current_count=$(find "$ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    if [[ $current_count -gt 0 ]]; then
+        write_info "Luodaan automaattinen varmuuskopio nykyisistä projekteista ennen palautusta..."
+        backup_create
+    fi
+
+    write_info "Palautetaan varmuuskopiosta..."
+    local parent
+    parent=$(dirname "$ROOT")
+
+    # Pura zip väliaikaiseen hakemistoon ja kopioi projects/ päälle
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    unzip -q "$zip_path" -d "$tmp_dir" && {
+        # Etsi projects-kansio puretusta sisällöstä
+        local extracted_projects
+        extracted_projects=$(find "$tmp_dir" -maxdepth 2 -type d -name "$(basename "$ROOT")" | head -1)
+
+        if [[ -z "$extracted_projects" ]]; then
+            write_error "Varmuuskopiossa ei löydy projects-kansiota"
+            rm -rf "$tmp_dir"
+            return
+        fi
+
+        rm -rf "$ROOT"
+        cp -r "$extracted_projects" "$ROOT"
+        rm -rf "$tmp_dir"
+
+        local restored_count
+        restored_count=$(find "$ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+        write_history "BACKUP_RESTORED" "$(basename "$zip_path")  (${restored_count} projektia)"
+        write_success "Palautettu: ${restored_count} projekti(a)"
+        write_color "     ♻️   $(basename "$zip_path")" "$DARK_GRAY"
+    } || {
+        write_error "Purkaminen epäonnistui"
+        rm -rf "$tmp_dir"
+    }
+}
+
+# =====================================================================
+#  STATUS  —  nopea kokonaiskuva kaikesta
+# =====================================================================
+show_status() {
+    ensure_root
+    echo ""
+    write_color "  ⚡  STATUS" "$CYAN"
+    write_color "  ────────────────────────────────────────" "$DARK_GRAY"
+
+    # Laske projektit per kieli
+    declare -A lang_count
+    local total=0
+    local git_clean=0 git_dirty=0 git_none=0
+
+    while IFS= read -r -d '' dir; do
+        local meta="${dir}/meta.json"
+        local lang="unknown"
+        [[ -f "$meta" ]] && lang=$(python3 -c "import json; d=json.load(open('${meta}')); print(d.get('lang','unknown'))" 2>/dev/null)
+        lang_count["$lang"]=$(( ${lang_count["$lang"]:-0} + 1 ))
+        ((total++))
+
+        # Git-tila
+        if [[ -d "${dir}/.git" ]]; then
+            local dirty
+            dirty=$(git -C "$dir" status --porcelain 2>/dev/null)
+            if [[ -z "$dirty" ]]; then ((git_clean++)); else ((git_dirty++)); fi
+        else
+            ((git_none++))
+        fi
+    done < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+
+    # Projektit yhteensä
+    write_color "  📦  Projekteja yhteensä:  ${total}" "$WHITE"
+    echo ""
+
+    # Per kieli
+    write_color "  Kielet:" "$DARK_GRAY"
+    for lang in "${!lang_count[@]}"; do
+        local icon color
+        icon=$(get_lang_icon "$lang")
+        color=$(get_lang_color "$lang")
+        printf "     ${icon}  "
+        echo -e "${color}${lang}${RESET}  ${DARK_GRAY}×${lang_count[$lang]}${RESET}"
+    done | sort
+    echo ""
+
+    # Git-tilat
+    write_color "  Git:" "$DARK_GRAY"
+    [[ $git_clean -gt 0 ]] && write_color "     ✅  Puhdas:       ${git_clean}" "$GREEN"
+    [[ $git_dirty -gt 0 ]] && write_color "     ⚠️   Muutoksia:    ${git_dirty}" "$YELLOW"
+    [[ $git_none  -gt 0 ]] && write_color "     ○   Ei git-repoa: ${git_none}"  "$DARK_GRAY"
+    echo ""
+
+    # Templatet ja varmuuskopiot
+    local tmpl_count backup_count
+    tmpl_count=$(find "$TEMPLATES_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+    backup_count=$(find "$BACKUPS_DIR" -maxdepth 1 -name "*.zip" 2>/dev/null | wc -l)
+    write_color "  🗂️   Templateja:      ${tmpl_count}" "$WHITE"
+    write_color "  📦  Varmuuskopioita: ${backup_count}" "$WHITE"
+    echo ""
+
+    # Viimeisin toiminto historiasta
+    if [[ -f "$HISTORY_LOG" ]]; then
+        local last
+        last=$(tail -1 "$HISTORY_LOG")
+        write_color "  🕐  Viimeisin toiminto:" "$DARK_GRAY"
+        write_color "     ${last}" "$DARK_GRAY"
+    fi
+    echo ""
+}
+
+# =====================================================================
+#  DEPS --all  —  asenna riippuvuudet kaikille projekteille
+# =====================================================================
+install_deps() {
+    local name="$1"
+
+    # deps --all
+    if [[ "$name" == "--all" || "$name" == "-a" ]]; then
+        ensure_root
+        local count=0 ok=0 skip=0
+        echo ""
+        write_color "  📦  Asennetaan riippuvuudet kaikille projekteille..." "$CYAN"
+        write_color "  ────────────────────────────────────────" "$DARK_GRAY"
+
+        while IFS= read -r -d '' dir; do
+            local pname meta lang
+            pname=$(basename "$dir")
+            meta="${dir}/meta.json"
+            [[ ! -f "$meta" ]] && ((skip++)) && continue
+            lang=$(python3 -c "import json; d=json.load(open('${meta}')); print(d.get('lang','?'))" 2>/dev/null)
+
+            local needs_install=false
+            case "$lang" in
+                node|react|ts|bun) [[ -f "${dir}/package.json" ]] && needs_install=true ;;
+                python)            [[ -f "${dir}/requirements.txt" ]] && needs_install=true ;;
+                go)                [[ -f "${dir}/go.mod" ]] && needs_install=true ;;
+                rust)              [[ -f "${dir}/Cargo.toml" ]] && needs_install=true ;;
+            esac
+
+            if [[ "$needs_install" == true ]]; then
+                local icon color
+                icon=$(get_lang_icon "$lang"); color=$(get_lang_color "$lang")
+                echo -ne "  ${icon}  "; echo -e "${color}${pname}${RESET}"
+                pushd "$dir" > /dev/null
+                case "$lang" in
+                    node|react|ts|bun)
+                        if command -v bun &>/dev/null; then bun install -q 2>/dev/null
+                        else npm install --silent 2>/dev/null; fi ;;
+                    python) pip install -q -r requirements.txt 2>/dev/null ;;
+                    go)     go mod tidy 2>/dev/null ;;
+                    rust)   cargo build -q 2>/dev/null ;;
+                esac
+                popd > /dev/null
+                ((ok++))
+            else
+                ((skip++))
+            fi
+            ((count++))
+        done < <(find "$ROOT" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+
+        echo ""
+        write_success "Valmis: ${ok} projektia asennettu, ${skip} ohitettu"
+        return
+    fi
+
+    # Yksittäinen projekti (alkuperäinen toiminta)
+    if [[ -z "$name" ]]; then write_error "Usage: deps <name>  tai  deps --all"; return; fi
+    local target="${ROOT}/${name}"
+    if [[ ! -d "$target" ]]; then write_error "Project '$name' not found"; return; fi
+
+    local meta="${target}/meta.json"
+    if [[ ! -f "$meta" ]]; then write_error "No meta.json — can't detect language"; return; fi
+
+    local lang
+    lang=$(python3 -c "import json; d=json.load(open('${meta}')); print(d.get('lang','?'))" 2>/dev/null)
+
+    pushd "$target" > /dev/null
+    case "$lang" in
+        node|react|ts|bun)
+            if command -v bun &>/dev/null; then
+                write_info "Installing with bun..."; bun install
+            else
+                write_info "Installing with npm..."; npm install
+            fi
+            ;;
+        python)
+            if [[ -f "requirements.txt" ]]; then
+                write_info "Installing Python deps..."; pip install -r requirements.txt
+            else
+                write_warn "No requirements.txt found"
+            fi
+            ;;
+        go)   write_info "Tidying Go modules..."; go mod tidy ;;
+        rust) write_info "Building with cargo..."; cargo build ;;
+        *)    write_warn "No dep install defined for lang: ${lang}" ;;
+    esac
+    write_success "Dependencies installed for '${name}'"
+    popd > /dev/null
+}
+
 # -------------------------
 # HELP
 # -------------------------
 show_help() {
     echo ""
     write_color "  ┌─────────────────────────────────────────┐" "$DARK_CYAN"
-    write_color "  │        MAKE MULTI CLI  🚀  v1.3.2       │" "$CYAN"
+    write_color "  │        MAKE MULTI CLI  🚀  v1.3.3       │" "$CYAN"
     write_color "  └─────────────────────────────────────────┘" "$DARK_CYAN"
     echo ""
     write_color "  COMMANDS" "$YELLOW"
@@ -932,12 +1495,28 @@ show_help() {
     write_color "  delete  <name>              Delete a project" "$WHITE"
     write_color "  init    <name>              Git init + first commit" "$WHITE"
     write_color "  deps    <name>              Install dependencies" "$WHITE"
+    write_color "  deps    --all               Install deps for all projects" "$WHITE"
+    write_color "  status                      Quick overview of all projects" "$WHITE"
     echo ""
     write_color "  notes   <name> [text]       Set/view project note" "$WHITE"
     write_color "  tag     <name> <tag>        Add tag  (e.g. work, hobby)" "$WHITE"
     write_color "  tag     <name> -<tag>       Remove tag" "$WHITE"
     write_color "  history [filter]            Show operation log" "$WHITE"
     write_color "  history clear               Clear the log" "$WHITE"
+    echo ""
+    write_color "  TEMPLATES" "$YELLOW"
+    write_color "  ─────────────────────────────────────────" "$DARK_GRAY"
+    write_color "  template save <project> [nimi]  Tallenna projekti templateksi" "$WHITE"
+    write_color "  template list                   Listaa kaikki templatet" "$WHITE"
+    write_color "  template use  <tmpl> <nimi>     Luo uusi projekti templatesta" "$WHITE"
+    write_color "  template info <tmpl>            Näytä templaten tiedot" "$WHITE"
+    write_color "  template delete <tmpl>          Poista template" "$WHITE"
+    echo ""
+    write_color "  BACKUP & RESTORE" "$YELLOW"
+    write_color "  ─────────────────────────────────────────" "$DARK_GRAY"
+    write_color "  backup                      Varmuuskopioi kaikki projektit" "$WHITE"
+    write_color "  backup list                 Listaa varmuuskopiot" "$WHITE"
+    write_color "  restore <tiedosto>          Palauta varmuuskopiosta" "$WHITE"
     echo ""
     write_color "  help                        Show this help" "$WHITE"
     write_color "  exit                        Quit" "$WHITE"
@@ -957,7 +1536,7 @@ show_banner() {
     echo ""
     write_color "  ╔══════════════════════════════════════════╗" "$CYAN"
     write_color "  ║                                          ║" "$CYAN"
-    write_color "  ║        MAKE MULTI CLI  🚀  v1.3.2        ║" "$CYAN"
+    write_color "  ║        MAKE MULTI CLI  🚀  v1.3.3        ║" "$CYAN"
     write_color "  ║   scaffold · run · manage · ship fast    ║" "$DARK_CYAN"
     write_color "  ║                                          ║" "$CYAN"
     write_color "  ╚══════════════════════════════════════════╝" "$CYAN"
@@ -984,39 +1563,44 @@ while true; do
     cmd="${parts[0],,}"
     arg1="${parts[1]:-}"
     arg2="${parts[2]:-}"
+    arg3="${parts[3]:-}"
     rest="${parts[*]:2}"
 
     case "$cmd" in
-        project) new_template    "$arg1" "$arg2" ;;
-        clone)   clone_project   "$arg1" "$arg2" ;;
-        search)  search_projects "$arg1" ;;
-        recent)  show_recent 5 ;;
-        export)  export_project  "$arg1" ;;
-        list)    list_projects ;;
-        info)    info_project    "$arg1" ;;
-        open)    open_project    "$arg1" ;;
-        editor)  editor_project  "$arg1" "$arg2" ;;
-        edit)    edit_project    "$arg1" ;;
-        run)     run_project     "$arg1" ;;
-        rename)  rename_project  "$arg1" "$arg2" ;;
-        delete)  delete_project  "$arg1" ;;
-        init)    init_git        "$arg1" ;;
-        deps)    install_deps    "$arg1" ;;
-        notes)   set_note        "$arg1" "$rest" ;;
-        tag)     set_tag         "$arg1" "$arg2" ;;
+        project)  new_template    "$arg1" "$arg2" ;;
+        clone)    clone_project   "$arg1" "$arg2" ;;
+        search)   search_projects "$arg1" ;;
+        recent)   show_recent 5 ;;
+        export)   export_project  "$arg1" ;;
+        list)     list_projects ;;
+        info)     info_project    "$arg1" ;;
+        open)     open_project    "$arg1" ;;
+        editor)   editor_project  "$arg1" "$arg2" ;;
+        edit)     edit_project    "$arg1" ;;
+        run)      run_project     "$arg1" ;;
+        rename)   rename_project  "$arg1" "$arg2" ;;
+        delete)   delete_project  "$arg1" ;;
+        init)     init_git        "$arg1" ;;
+        deps)     install_deps    "$arg1" ;;
+        status)   show_status ;;
+        notes)    set_note        "$arg1" "$rest" ;;
+        tag)      set_tag         "$arg1" "$arg2" ;;
+        template) manage_templates "$arg1" "$arg2" "$arg3" ;;
+        backup)   manage_backup   "$arg1" ;;
+        restore)  restore_backup  "$arg1" ;;
         history)
             if [[ "$arg1" == "clear" ]]; then clear_history
             else show_history "$arg1"
             fi
             ;;
-        help)    show_help ;;
+        help)     show_help ;;
         exit|quit)
             echo ""
             write_color "  👋  Bye!" "$CYAN"
             echo ""
             exit 0
             ;;
-        "")      ;;
-        *)       write_error "Unknown command '${cmd}' — type 'help' for usage" ;;
+        "")       ;;
+        *)        write_error "Unknown command '${cmd}' — type 'help' for usage" ;;
     esac
 done
