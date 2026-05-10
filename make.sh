@@ -64,6 +64,13 @@ get_lang_color() {
 # -------------------------
 show_splash() {
     clear
+    echo -e "${CYAN} Warning: make gen linux is on beta! We update it soon.${RESET}"
+    sleep 3
+    echo " Running make startup"
+    sleep 1
+    echo " running start screen commands"
+    sleep 3
+    clear
     echo ""
     echo -e "${CYAN}  ███╗   ███╗ █████╗ ██╗  ██╗███████╗${RESET}"
     echo -e "${CYAN}  ████╗ ████║██╔══██╗██║ ██╔╝██╔════╝${RESET}"
@@ -71,7 +78,7 @@ show_splash() {
     echo -e "${CYAN}  ██║╚██╔╝██║██╔══██║██╔═██╗ ██╔══╝  ${RESET}"
     echo -e "${CYAN}  ██║ ╚═╝ ██║██║  ██║██║  ██╗███████╗${RESET}"
     echo ""
-    echo -e "${DARK_CYAN}               make gen${RESET}"
+    echo -e "${DARK_CYAN}               make gen - linux(beta)${RESET}"
     echo ""
 
     local messages=(
@@ -539,6 +546,69 @@ run_project() {
 }
 
 # -------------------------
+# EDITOR (nano)
+# -------------------------
+editor_project() {
+    local name="$1"
+    local file="${2:-}"
+    if [[ -z "$name" ]]; then write_error "Usage: editor <name> [file]"; return; fi
+    local target="${ROOT}/${name}"
+    if [[ ! -d "$target" ]]; then write_error "Project '$name' not found"; return; fi
+
+    if ! command -v nano &>/dev/null; then write_error "nano not found in PATH"; return; fi
+
+    if [[ -n "$file" ]]; then
+        # Open specific file directly
+        local filepath="${target}/${file}"
+        if [[ ! -f "$filepath" ]]; then
+            write_warn "File '${file}' not found — creating new file"
+        fi
+        nano "$filepath"
+        write_history "EDITOR" "${name}/${file}"
+        write_success "Closed editor for '${file}' in '${name}'"
+    else
+        # Interactive file picker
+        echo ""
+        write_color "  📂  Files in '${name}'" "$CYAN"
+        write_color "  ────────────────────────────────────────" "$DARK_GRAY"
+        local files=()
+        local i=1
+        while IFS= read -r f; do
+            local rel="${f#$target/}"
+            echo -e "  ${DARK_GRAY}${i})${RESET}  📄 ${WHITE}${rel}${RESET}"
+            files+=("$rel")
+            ((i++))
+        done < <(find "$target" -type f | sort)
+
+        if [[ ${#files[@]} -eq 0 ]]; then
+            write_warn "No files in project '${name}'"
+            return
+        fi
+
+        echo ""
+        printf "  ${CYAN}Select file (number or name):${RESET} "
+        read -r choice
+
+        local selected=""
+        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#files[@]} )); then
+            selected="${files[$((choice-1))]}"
+        else
+            selected="$choice"
+        fi
+
+        local filepath="${target}/${selected}"
+        if [[ ! -f "$filepath" ]]; then
+            write_error "File '${selected}' not found"
+            return
+        fi
+
+        nano "$filepath"
+        write_history "EDITOR" "${name}/${selected}"
+        write_success "Closed editor for '${selected}' in '${name}'"
+    fi
+}
+
+# -------------------------
 # EDIT (VS Code)
 # -------------------------
 edit_project() {
@@ -796,17 +866,18 @@ show_history() {
             local detail="${BASH_REMATCH[3]}"
             local color icon
             case "$action" in
-                CREATED)      color="$GREEN";   icon="✅" ;;
-                DELETED)      color="$RED";     icon="🗑 " ;;
-                RENAMED)      color="$YELLOW";  icon="✏ " ;;
-                CLONED)       color="$CYAN";    icon="📋" ;;
+                CREATED)      color="$GREEN";     icon="✅" ;;
+                DELETED)      color="$RED";       icon="🗑 " ;;
+                RENAMED)      color="$YELLOW";    icon="✏ " ;;
+                CLONED)       color="$CYAN";      icon="📋" ;;
                 EXPORTED)     color="$DARK_CYAN"; icon="📤" ;;
-                GIT_INIT)     color="$BLUE";    icon="🔧" ;;
-                TAG_ADDED)    color="$MAGENTA"; icon="🏷 " ;;
-                TAG_REMOVED)  color="$MAGENTA"; icon="🏷 " ;;
-                NOTE)         color="$WHITE";   icon="📝" ;;
+                GIT_INIT)     color="$BLUE";      icon="🔧" ;;
+                TAG_ADDED)    color="$MAGENTA";   icon="🏷 " ;;
+                TAG_REMOVED)  color="$MAGENTA";   icon="🏷 " ;;
+                NOTE)         color="$WHITE";     icon="📝" ;;
                 NOTE_CLEARED) color="$DARK_GRAY"; icon="📝" ;;
-                *)            color="$WHITE";   icon="  " ;;
+                EDITOR)       color="$CYAN";      icon="✏️ " ;;
+                *)            color="$WHITE";     icon="  " ;;
             esac
             echo -ne "  ${icon}  "
             echo -ne "${DARK_GRAY}${ts}  ${RESET}"
@@ -841,34 +912,35 @@ clear_history() {
 show_help() {
     echo ""
     write_color "  ┌─────────────────────────────────────────┐" "$DARK_CYAN"
-    write_color "  │        MAKE MULTI CLI  🚀  v3.1          │" "$CYAN"
+    write_color "  │        MAKE MULTI CLI  🚀  v1.3.2       │" "$CYAN"
     write_color "  └─────────────────────────────────────────┘" "$DARK_CYAN"
     echo ""
     write_color "  COMMANDS" "$YELLOW"
     write_color "  ─────────────────────────────────────────" "$DARK_GRAY"
-    write_color "  project <lang> <name>   Create a new project" "$WHITE"
-    write_color "  clone   <name> <new>    Clone a project" "$WHITE"
-    write_color "  search  <keyword>       Search by name, lang or tag" "$WHITE"
-    write_color "  recent                  Show recently modified projects" "$WHITE"
-    write_color "  export  <name>          Export project as .zip" "$WHITE"
-    write_color "  list                    List all projects" "$WHITE"
-    write_color "  info    <name>          Show project details" "$WHITE"
-    write_color "  open    <name>          Show project files" "$WHITE"
-    write_color "  edit    <name>          Open in VS Code" "$WHITE"
-    write_color "  run     <name>          Run the project" "$WHITE"
-    write_color "  rename  <old>  <new>    Rename a project" "$WHITE"
-    write_color "  delete  <name>          Delete a project" "$WHITE"
-    write_color "  init    <name>          Git init + first commit" "$WHITE"
-    write_color "  deps    <name>          Install dependencies" "$WHITE"
+    write_color "  project <lang> <name>       Create a new project" "$WHITE"
+    write_color "  clone   <name> <new>        Clone a project" "$WHITE"
+    write_color "  search  <keyword>           Search by name, lang or tag" "$WHITE"
+    write_color "  recent                      Show recently modified projects" "$WHITE"
+    write_color "  export  <name>              Export project as .zip" "$WHITE"
+    write_color "  list                        List all projects" "$WHITE"
+    write_color "  info    <name>              Show project details" "$WHITE"
+    write_color "  open    <name>              Show project files" "$WHITE"
+    write_color "  editor  <name> [file]       Open file in nano editor" "$WHITE"
+    write_color "  edit    <name>              Open in VS Code" "$WHITE"
+    write_color "  run     <name>              Run the project" "$WHITE"
+    write_color "  rename  <old>  <new>        Rename a project" "$WHITE"
+    write_color "  delete  <name>              Delete a project" "$WHITE"
+    write_color "  init    <name>              Git init + first commit" "$WHITE"
+    write_color "  deps    <name>              Install dependencies" "$WHITE"
     echo ""
-    write_color "  notes   <name> [text]   Set/view project note" "$WHITE"
-    write_color "  tag     <name> <tag>    Add tag  (e.g. work, hobby)" "$WHITE"
-    write_color "  tag     <name> -<tag>   Remove tag" "$WHITE"
-    write_color "  history [filter]        Show operation log" "$WHITE"
-    write_color "  history clear           Clear the log" "$WHITE"
+    write_color "  notes   <name> [text]       Set/view project note" "$WHITE"
+    write_color "  tag     <name> <tag>        Add tag  (e.g. work, hobby)" "$WHITE"
+    write_color "  tag     <name> -<tag>       Remove tag" "$WHITE"
+    write_color "  history [filter]            Show operation log" "$WHITE"
+    write_color "  history clear               Clear the log" "$WHITE"
     echo ""
-    write_color "  help                    Show this help" "$WHITE"
-    write_color "  exit                    Quit" "$WHITE"
+    write_color "  help                        Show this help" "$WHITE"
+    write_color "  exit                        Quit" "$WHITE"
     echo ""
     write_color "  LANGUAGES" "$YELLOW"
     write_color "  ─────────────────────────────────────────" "$DARK_GRAY"
@@ -885,7 +957,7 @@ show_banner() {
     echo ""
     write_color "  ╔══════════════════════════════════════════╗" "$CYAN"
     write_color "  ║                                          ║" "$CYAN"
-    write_color "  ║        MAKE MULTI CLI  🚀  v3.1          ║" "$CYAN"
+    write_color "  ║        MAKE MULTI CLI  🚀  v1.3.2        ║" "$CYAN"
     write_color "  ║   scaffold · run · manage · ship fast    ║" "$DARK_CYAN"
     write_color "  ║                                          ║" "$CYAN"
     write_color "  ╚══════════════════════════════════════════╝" "$CYAN"
@@ -915,22 +987,23 @@ while true; do
     rest="${parts[*]:2}"
 
     case "$cmd" in
-        project) new_template   "$arg1" "$arg2" ;;
-        clone)   clone_project  "$arg1" "$arg2" ;;
+        project) new_template    "$arg1" "$arg2" ;;
+        clone)   clone_project   "$arg1" "$arg2" ;;
         search)  search_projects "$arg1" ;;
         recent)  show_recent 5 ;;
-        export)  export_project "$arg1" ;;
+        export)  export_project  "$arg1" ;;
         list)    list_projects ;;
-        info)    info_project   "$arg1" ;;
-        open)    open_project   "$arg1" ;;
-        edit)    edit_project   "$arg1" ;;
-        run)     run_project    "$arg1" ;;
-        rename)  rename_project "$arg1" "$arg2" ;;
-        delete)  delete_project "$arg1" ;;
-        init)    init_git       "$arg1" ;;
-        deps)    install_deps   "$arg1" ;;
-        notes)   set_note       "$arg1" "$rest" ;;
-        tag)     set_tag        "$arg1" "$arg2" ;;
+        info)    info_project    "$arg1" ;;
+        open)    open_project    "$arg1" ;;
+        editor)  editor_project  "$arg1" "$arg2" ;;
+        edit)    edit_project    "$arg1" ;;
+        run)     run_project     "$arg1" ;;
+        rename)  rename_project  "$arg1" "$arg2" ;;
+        delete)  delete_project  "$arg1" ;;
+        init)    init_git        "$arg1" ;;
+        deps)    install_deps    "$arg1" ;;
+        notes)   set_note        "$arg1" "$rest" ;;
+        tag)     set_tag         "$arg1" "$arg2" ;;
         history)
             if [[ "$arg1" == "clear" ]]; then clear_history
             else show_history "$arg1"
